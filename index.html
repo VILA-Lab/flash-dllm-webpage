@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flash-dLLM: IO-Aware KV Caching and Parallel Decoding for Fast, Memory-Efficient Diffusion LLMs</title>
+  <meta name="description" content="Flash-dLLM is a training-free inference framework for diffusion LLMs. An IO-aware fused KV-cache kernel and self-verified parallel decoding give up to 210.6 tokens/s on LLaDA-1.5.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Flash-dLLM: IO-Aware KV Caching and Parallel Decoding for Fast, Memory-Efficient Diffusion LLMs">
+  <meta property="og:description" content="Training-free acceleration of diffusion LLMs with an IO-aware fused KV-cache kernel and draft-and-verify decoding.">
+  <meta property="og:image" content="assets/video/flash_vs_fastdllm.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" type="image/svg+xml" href="assets/img/flash-dllm-logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <img class="logo" src="assets/img/flash-dllm-logo.svg" alt="" width="84" height="84">
+    <h1><span class="flash">Flash-dLLM</span>: IO-Aware KV Caching and Parallel Decoding for Fast, Memory-Efficient Diffusion LLMs</h1>
+    <div class="authors">
+      <strong>
+        <a href="https://scholar.google.com/citations?user=TBcqxpAAAAAJ&amp;hl=en">Quan Nguyen-Tri</a>,
+        <a href="https://mukul54.github.io/">Mukul Ranjan</a>,
+        <a href="https://zhiqiangshen.com/">Zhiqiang Shen</a><sup>†</sup>
+      </strong>
+      <span class="affiliation">VILA Lab, MBZUAI</span>
+      <span class="note"><sup>†</sup> Corresponding author</span>
+    </div>
+    <img class="institution" src="assets/img/mbzuai_logo.png" alt="Mohamed bin Zayed University of Artificial Intelligence" width="545" height="183">
+    <div class="links">
+      <a class="primary" href="https://arxiv.org/abs/2609.26796">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1.5V8h4.5zM8 12v1.5h8V12zm0 3.5V17h8v-1.5zM8 8.5V10h3V8.5z"/></svg>
+        Paper
+      </a>
+      <a href="https://github.com/VILA-Lab/Flash-dLLM">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.27-.01-1.18-.02-2.14-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.74.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
+        Code
+      </a>
+      <a href="#demo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm6 4.5v7l6-3.5z"/></svg>
+        Demo
+      </a>
+      <a href="#citation">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h7v7H7.5c0 1.7.9 2.8 3.5 3.2V18C6.7 17.5 4 15.2 4 11zm9 0h7v7h-3.5c0 1.7.9 2.8 3.5 3.2V18c-4.3-.5-7-2.8-7-7z"/></svg>
+        BibTeX
+      </a>
+    </div>
+  </header>
+
+  <article>
+
+    <figure id="demo">
+      <div class="switch" role="tablist" aria-label="Choose the baseline">
+        <button type="button" role="tab" id="tab-fastdllm" aria-selected="true" aria-controls="panel-fastdllm">Flash-dLLM vs. Fast-dLLM</button>
+        <button type="button" role="tab" id="tab-llada" aria-selected="false" aria-controls="panel-llada">Flash-dLLM vs. LLaDA</button>
+      </div>
+
+      <div class="video-panel" id="panel-fastdllm" role="tabpanel" aria-labelledby="tab-fastdllm">
+        <video controls muted playsinline loop preload="metadata" poster="assets/video/flash_vs_fastdllm.jpg" width="1920" height="1080">
+          <source src="assets/video/flash_vs_fastdllm.mp4" type="video/mp4">
+        </video>
+        <figcaption>Real-time demo. Flash-dLLM (left) and Fast-dLLM (right) answer the same 8 GSM8K questions with LLaDA-1.5 on the same GPU, 4 questions per forward pass. Playback is fast-forwarded after Flash-dLLM finishes.</figcaption>
+      </div>
+
+      <div class="video-panel" id="panel-llada" role="tabpanel" aria-labelledby="tab-llada">
+        <video controls muted playsinline loop preload="metadata" poster="assets/video/flash_vs_llada.jpg" width="1920" height="1080">
+          <source src="assets/video/flash_vs_llada.mp4" type="video/mp4">
+        </video>
+        <figcaption>Real-time demo. Flash-dLLM (left) and LLaDA without a KV cache (right) answer the same 8 GSM8K questions on the same GPU, 4 questions per forward pass. Playback is fast-forwarded after Flash-dLLM finishes.</figcaption>
+      </div>
+    </figure>
+
+    <p>Diffusion large language models (dLLMs) generate text by iterative denoising, so they can decode many tokens at once. In practice their inference is still slow. Every denoising step revisits the whole sequence, which forces frequent KV-cache updates, and parallel decoding has to stay conservative to protect quality.</p>
+
+    <p><strong>Flash-dLLM</strong> is a training-free framework that speeds up both parts together. <strong>Flash-Cache</strong> is an IO-aware KV cache built on a fused GPU kernel. <strong>Flash-Verify</strong> is a draft-and-verify decoder in which the dLLM checks its own drafts, with no auxiliary model. On LLaDA-1.5, Flash-dLLM reaches <strong>210.6 tokens/s</strong> on GSM8K. It is <strong>5.1× and 11.0× faster than Elastic-Cache</strong> on GSM8K and HumanEval, and up to <strong>148× faster than decoding without a cache</strong>.</p>
+
+    <figure>
+      <a href="assets/img/fig4_scalability.png"><img src="assets/img/fig4_scalability.png" width="1984" height="722" alt="Two line plots against batch size from 1 to 32: throughput and peak GPU memory for LLaDA-1.5, Fast-dLLM, dLLM-Cache, Flash-dLLM and Llama3."></a>
+      <figcaption><b>Figure 1.</b> Throughput and peak GPU memory against batch size on GSM8K (generation length 512, LLaDA-1.5). Flash-dLLM scales to batch size 32 and needs less memory than the other dLLM methods. Fast-dLLM runs out of memory at batch size 24. Llama3-8B is an autoregressive reference.</figcaption>
+    </figure>
+
+    <h2>The bottleneck: why a KV cache is not enough</h2>
+
+    <p>KV caching and parallel decoding are usually studied separately. When the two are combined, three effects limit the speedup.</p>
+
+    <ul>
+      <li><strong>Memory I/O dominates cache updates.</strong> A cached step launches separate kernels for the QKV projection, the rotary embedding, the cache write and attention. Each kernel writes its intermediate tensors to GPU memory (HBM), and the next kernel reads them back. These operations do little arithmetic, so the memory traffic can cost more than the computation that the cache saves. Fusing them gives a <strong>1.37× speedup per layer</strong>.</li>
+      <li><strong>Only a few decoded tokens matter.</strong> Masked positions attend mostly to a small set of decoded tokens. In the middle layers of LLaDA-1.5, the <strong>top 32 tokens receive about 50% of the attention</strong>. Refreshing every decoded token at every step wastes compute.</li>
+      <li><strong>Confidence thresholds are conservative.</strong> Confidence-aware decoding keeps only the tokens above a threshold. Many of the rejected tokens are already correct, and they have to wait for a later step.</li>
+    </ul>
+
+    <figure>
+      <a href="assets/img/fig1_motivation.png"><img src="assets/img/fig1_motivation.png" width="2000" height="604" loading="lazy" alt="Three plots: latency of the conventional and the fused cache pipeline, the attention share of the most-attended tokens across layers, and average confidence against the number of early-decodable tokens."></a>
+      <figcaption><b>Figure 2.</b> The three observations behind Flash-dLLM. (a) The fused cache pipeline is 1.37× faster per layer. (b) A small set of decoded tokens receives most of the attention. (c) Higher confidence goes with more tokens that could be decoded early.</figcaption>
+    </figure>
+
+    <h2>The Flash-dLLM approach</h2>
+
+    <p>Flash-dLLM has two components. They share one fused kernel and one pre-allocated KV cache.</p>
+
+    <figure>
+      <a href="assets/img/fig2_overview.png"><img src="assets/img/fig2_overview.png" width="1977" height="1052" loading="lazy" alt="Overview diagram. Left: Flash-Cache, where tracked tokens and the masked window attend to the full KV cache. Right: Flash-Verify, where drafted and masked copies of the same positions are verified under a causal attention mask."></a>
+      <figcaption><b>Figure 3.</b> Overview of Flash-dLLM. <b>Left, Flash-Cache:</b> a fixed-size query of tracked tokens and the current masked window attends to the full KV cache. <b>Right, Flash-Verify:</b> low-confidence positions are duplicated as a draft view and a mask view, and a draft is accepted when both views agree.</figcaption>
+    </figure>
+
+    <h3>Flash-Cache: IO-aware KV caching</h3>
+
+    <p>The first pass processes the whole sequence and fills the cache. Every later step recomputes only a small query of fixed size and reuses the cache for everything else. Three pieces make this cheap.</p>
+
+    <ul>
+      <li><strong>Fused KV-cache kernel.</strong> One Triton kernel does the QKV projection, the rotary embedding and the cache write. Intermediate keys and values stay in fast on-chip memory and go straight to their final cache slots, so they are never materialized in HBM.</li>
+      <li><strong>Scheduled flash attention.</strong> Samples in a batch need queries of different lengths at each step. A block table maps every query block to its cache blocks, so full and partial computations for different samples run together without padding.</li>
+      <li><strong>Selective tracking.</strong> The query holds the current masked window plus a fixed tracking budget: the tokens that were just decoded and the decoded tokens that receive the most attention. All other positions are served from the cache, which bounds the cost of every step.</li>
+    </ul>
+
+    <figure>
+      <a href="assets/img/fig3_flash_cache.png"><img src="assets/img/fig3_flash_cache.png" width="2003" height="586" loading="lazy" alt="Memory flow of Flash-Cache. Left: the fused kernel compared with the conventional KV-cache flow between GPU SRAM and HBM. Right: a block table that schedules attention for queries of different lengths."></a>
+      <figcaption><b>Figure 4.</b> IO-aware memory management in Flash-Cache. (a) The fused kernel keeps intermediate states in SRAM and writes keys and values directly to the cache. (b) A block table schedules attention for queries of different lengths.</figcaption>
+    </figure>
+
+    <h3>Flash-Verify: the model verifies its own drafts</h3>
+
+    <p>Flash-Verify recovers the correct tokens that a confidence threshold would throw away. The dLLM is both the drafter and the verifier.</p>
+
+    <ol>
+      <li><strong>Draft.</strong> One forward pass predicts a token for every position in the masked window.</li>
+      <li><strong>Accept the confident tokens.</strong> Predictions with confidence of at least ε are decoded directly.</li>
+      <li><strong>Verify the rest in one extra pass.</strong> Each remaining position enters the query twice: once filled with its draft token (the draft view) and once as <code>[MASK]</code> (the mask view). A causal attention mask lets a mask-view position see the drafts before it in the order, but never its own draft.</li>
+      <li><strong>Accept until the first mismatch.</strong> A draft is accepted when the mask view predicts the same token with confidence of at least γ. As in speculative decoding, acceptance stops at the first rejection.</li>
+    </ol>
+
+    <p>The verify pass reuses the fused kernel and the cache, and its cost grows with the masked window, not with the sequence. Flash-Verify decodes <strong>5.7 tokens per step</strong>, against 2.8 for confidence-aware decoding and 1.0 for greedy decoding. A block of <em>m</em> accepted tokens deviates from the model's own sequential distribution by at most 1 − γ<sup><em>m</em></sup> in total variation.</p>
+
+    <figure>
+      <a href="assets/img/fig6_tokens_per_step.png"><img src="assets/img/fig6_tokens_per_step.png" width="1808" height="925" loading="lazy" alt="Accuracy, throughput and tokens per iteration for Flash-Verify and confidence-aware decoding at thresholds from 0.60 to 0.90."></a>
+      <figcaption><b>Figure 5.</b> Flash-Verify against confidence-aware decoding at different thresholds. Flash-Verify decodes more tokens per iteration and keeps a higher throughput at similar accuracy.</figcaption>
+    </figure>
+
+    <h2>Results</h2>
+
+    <p>All numbers are measured with LLaDA-1.5 on a single NVIDIA A100 80GB.</p>
+
+    <h3>Four benchmarks at generation length 512</h3>
+
+    <p>Flash-dLLM has the highest throughput on every benchmark. Its accuracy is higher than the uncached baseline on GSM8K, MATH and MBPP, and 0.61 points lower on HumanEval.</p>
+
+    <div class="table-scroll">
+      <table class="results-table">
+        <thead>
+          <tr><th>Benchmark</th><th>Metric</th><th>LLaDA-1.5</th><th>Fast-dLLM</th><th>Elastic-Cache</th><th class="ours">Flash-dLLM</th></tr>
+        </thead>
+        <tbody>
+          <tr class="group"><td rowspan="2"><strong>GSM8K (5-shot)</strong></td><td class="metric">TPS ↑</td><td>2.6 <span class="speedup">(1.0×)</span></td><td>36.8 <span class="speedup">(14.2×)</span></td><td>41.7 <span class="speedup">(16.0×)</span></td><td class="ours"><strong>210.6 <span class="speedup">(81.0×)</span></strong></td></tr>
+          <tr><td class="metric">Score ↑</td><td>81.35</td><td>80.82</td><td>82.79</td><td class="ours"><strong>83.02</strong></td></tr>
+          <tr class="group"><td rowspan="2"><strong>MATH (4-shot)</strong></td><td class="metric">TPS ↑</td><td>5.0 <span class="speedup">(1.0×)</span></td><td>44.4 <span class="speedup">(8.9×)</span></td><td>41.4 <span class="speedup">(8.3×)</span></td><td class="ours"><strong>210.1 <span class="speedup">(42.0×)</span></strong></td></tr>
+          <tr><td class="metric">Score ↑</td><td>35.63</td><td>33.68</td><td>35.84</td><td class="ours"><strong>35.98</strong></td></tr>
+          <tr class="group"><td rowspan="2"><strong>HumanEval (0-shot)</strong></td><td class="metric">TPS ↑</td><td>3.2 <span class="speedup">(1.0×)</span></td><td>15.4 <span class="speedup">(4.8×)</span></td><td>16.8 <span class="speedup">(5.2×)</span></td><td class="ours"><strong>185.6 <span class="speedup">(58.0×)</span></strong></td></tr>
+          <tr><td class="metric">Score ↑</td><td><strong>40.85</strong></td><td>36.59</td><td>37.80</td><td class="ours">40.24</td></tr>
+          <tr class="group"><td rowspan="2"><strong>MBPP (3-shot)</strong></td><td class="metric">TPS ↑</td><td>1.0 <span class="speedup">(1.0×)</span></td><td>17.8 <span class="speedup">(17.8×)</span></td><td>32.8 <span class="speedup">(32.8×)</span></td><td class="ours"><strong>148.2 <span class="speedup">(148.2×)</span></strong></td></tr>
+          <tr><td class="metric">Score ↑</td><td>38.20</td><td>36.20</td><td><strong>39.00</strong></td><td class="ours"><strong>39.00</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-note">TPS is throughput in tokens per second, with the speedup over LLaDA-1.5 decoded greedily without a cache. Score is accuracy or pass@1 in percent. Flash-dLLM is Flash-Cache with Flash-Verify.</p>
+
+    <h3>Comparison with more acceleration methods</h3>
+
+    <div class="table-scroll">
+      <table class="results-table">
+        <thead>
+          <tr><th>Method (GSM8K, length 512)</th><th>TPS ↑</th><th>Score ↑</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>dKV-Cache</td><td>14.9 <span class="speedup">(5.7×)</span></td><td>81.50</td></tr>
+          <tr><td>FlashDLM</td><td>15.7 <span class="speedup">(6.0×)</span></td><td>79.91</td></tr>
+          <tr><td>dLLM-Cache</td><td>16.8 <span class="speedup">(6.5×)</span></td><td>80.97</td></tr>
+          <tr><td>Fast-dLLM</td><td>36.8 <span class="speedup">(14.2×)</span></td><td>80.82</td></tr>
+          <tr><td>Dyna-dLLM</td><td>38.4 <span class="speedup">(14.8×)</span></td><td>79.32</td></tr>
+          <tr><td>Elastic-Cache</td><td>41.7 <span class="speedup">(16.0×)</span></td><td>82.79</td></tr>
+          <tr><td>FreeDave</td><td>42.8 <span class="speedup">(16.5×)</span></td><td>80.97</td></tr>
+          <tr class="ours"><td><strong>Flash-Cache</strong> (confidence-aware)</td><td>149.4 <span class="speedup">(57.5×)</span></td><td>82.87</td></tr>
+          <tr class="ours"><td><strong>Flash-Cache + Flash-Verify</strong></td><td><strong>210.6 <span class="speedup">(81.0×)</span></strong></td><td><strong>83.02</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Scaling with batch size</h3>
+
+    <p>Throughput keeps growing up to batch size 32. At batch size 16, Flash-dLLM uses about <strong>26 GB</strong> of GPU memory, against about 50 GB for Fast-dLLM (Figure 1).</p>
+
+    <div class="table-scroll">
+      <table class="results-table">
+        <thead>
+          <tr><th rowspan="2">Flash-Cache with</th><th rowspan="2">Tokens / step</th><th colspan="5">TPS at batch size</th></tr>
+          <tr class="sub"><th>1</th><th>4</th><th>8</th><th>16</th><th>32</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Greedy decoding</td><td>1.0</td><td>18.5</td><td>37.7</td><td>46.3</td><td>51.3</td><td>55.0</td></tr>
+          <tr><td>Confidence-aware decoding</td><td>2.8</td><td>51.7</td><td>102.4</td><td>120.5</td><td>131.8</td><td>139.5</td></tr>
+          <tr class="ours"><td><strong>Flash-Verify</strong></td><td><strong>5.7</strong></td><td><strong>56.0</strong></td><td><strong>131.3</strong></td><td><strong>164.8</strong></td><td><strong>186.2</strong></td><td><strong>199.8</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-note">GSM8K, 5-shot, generation length 512.</p>
+
+    <h3>Accuracy and speed can be traded</h3>
+
+    <p>The verification threshold γ and the tracking budget set the operating point. Across the tested settings, Flash-dLLM moves from <strong>277.8 tokens/s at 80.23%</strong> accuracy to <strong>131.6 tokens/s at 83.41%</strong>.</p>
+
+    <figure>
+      <a href="assets/img/fig5_accuracy_throughput.png"><img src="assets/img/fig5_accuracy_throughput.png" width="2012" height="1086" loading="lazy" alt="Two plots of average throughput against average accuracy on GSM8K: the Pareto frontier of Flash-Verify, and the frontiers of Flash-Verify and confidence-aware decoding."></a>
+      <figcaption><b>Figure 6.</b> Accuracy against throughput on GSM8K for different tracking budgets and thresholds, averaged over five seeds. Flash-Verify is faster than confidence-aware decoding over most of the accuracy range they share.</figcaption>
+    </figure>
+
+    <h3>The same answer in fewer steps</h3>
+
+    <p>One GSM8K prompt, decoded by LLaDA-1.5 without a cache. All three decoders return the correct answer.</p>
+
+    <div class="table-scroll">
+      <table class="results-table">
+        <thead>
+          <tr><th>Decoding</th><th>Steps ↓</th><th>Tokens</th><th>Time ↓</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Greedy</td><td>283</td><td>283</td><td>64.7 s</td></tr>
+          <tr><td>Confidence-aware</td><td>66</td><td>277</td><td>17.2 s</td></tr>
+          <tr class="ours"><td><strong>Flash-Verify</strong></td><td><strong>30</strong></td><td>276</td><td><strong>13.1 s</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Conclusion</h2>
+
+    <p>Flash-dLLM treats GPU memory traffic and token verification as one problem. A fused kernel makes the KV cache cheap to keep fresh, and the same cache lets the model verify its own drafts. Decoding gets faster and uses less memory, with no retraining and no second model.</p>
+
+    <h2 id="citation">Citation</h2>
+
+    <div class="bibtex">
+      <button type="button" class="copy" id="copy-bibtex">Copy</button>
+<pre><code id="bibtex">@misc{nguyentri2026flashdllm,
+  title         = {{Flash-dLLM}: IO-Aware KV Caching and Parallel Decoding for Fast, Memory-Efficient Diffusion LLMs},
+  author        = {Nguyen-Tri, Quan and Ranjan, Mukul and Shen, Zhiqiang},
+  year          = {2026},
+  eprint        = {2609.26796},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL}
+}</code></pre>
+    </div>
+
+  </article>
+
+  <footer>
+    <p>This work is supported by the MBZUAI-WIS Joint Program for Artificial Intelligence Research.</p>
+    <p>Page design inspired by the <a href="https://sjtu-deng-lab.github.io/Discrete-Diffusion-Forcing/">D2F project page</a>.</p>
+  </footer>
+
+</div>
+<script src="assets/js/main.js" defer></script>
+</body>
+</html>
